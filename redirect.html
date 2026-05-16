@@ -12,77 +12,94 @@
       font-family: ui-monospace, Consolas, monospace;
       display: grid;
       place-items: center;
-      font-size: 15px;
+      font-size: 14px;
     }
     .box {
-      text-align: center;
-      padding: 40px;
+      text-align: left;
+      padding: 32px;
       border: 1px solid #1a3a28;
       border-radius: 10px;
       background: #0b1a12;
+      width: min(560px, calc(100vw - 32px));
+      box-sizing: border-box;
     }
-    h2 { margin: 0 0 12px; font-size: 22px; }
-    p  { margin: 6px 0; color: #7fbf99; }
+    h2 { margin: 0 0 16px; font-size: 20px; }
+    .row { margin: 8px 0; }
+    .key { color: #7fbf99; }
+    .val { color: #ffffff; word-break: break-all; }
     .err { color: #ff6677; }
+    .ok  { color: #00e676; }
+    hr { border: none; border-top: 1px solid #1a3a28; margin: 16px 0; }
   </style>
 </head>
 <body>
-  <div class="box" id="box">
-    <h2>🔐 Authenticating...</h2>
-    <p id="status">Reading auth code from Fyers...</p>
+  <div class="box">
+    <h2 id="title">🔐 Fyers Auth Relay</h2>
+    <div id="out"></div>
   </div>
 
   <script>
-    /*
-      HOW THIS WORKS
-      ──────────────
-      1. Fyers redirects here with ?code=AUTH_CODE in the URL.
-      2. This page reads the code from the URL.
-      3. It POSTs the code to your GAS web app endpoint so GAS can
-         pick it up and exchange it for an access token.
-      4. The popup closes automatically.
+    var GAS_EXEC_URL = "https://script.google.com/macros/s/AKfycbxQvCU0N-hK9eI-O4w_CJd4Zd_vOki_qmFrdOa8m76y-mVdXPUFllinVVYqJFRlfrvW/exec";
 
-      SETUP
-      ─────
-      Replace GAS_EXEC_URL below with your actual GAS deployment URL
-      (the one that ends in /exec — NOT the one with ?fyers_cb=1).
-      e.g. "https://script.google.com/macros/s/AKfy.../exec"
-    */
-    var GAS_EXEC_URL = "https://script.google.com/macros/s/AKfycbxQvCU0N-hK9eI-O4w_CJd4Zd_vOki_qmFrdOa8m76y-mVdXPUFllinVVYqJFRlfrvW/exec"; // <-- REPLACE THIS
+    function show(label, value, cls) {
+      var d = document.createElement('div');
+      d.className = 'row';
+      d.innerHTML = '<span class="key">' + label + ': </span><span class="' + (cls||'val') + '">' + value + '</span>';
+      document.getElementById('out').appendChild(d);
+    }
 
-    function setStatus(msg, isErr) {
-      document.getElementById("status").textContent = msg;
-      document.getElementById("status").className = isErr ? "err" : "";
-      document.querySelector("h2").textContent = isErr ? "⚠️ Error" : "✅ Done";
+    function hr() {
+      document.getElementById('out').appendChild(document.createElement('hr'));
     }
 
     (function () {
+      // Show full URL so we can debug exactly what Fyers sent
+      show('Full URL', window.location.href);
+      show('Search string', window.location.search || '(empty)');
+      hr();
+
       var params = new URLSearchParams(window.location.search);
+
+      // Show ALL params Fyers sent
+      var allParams = [];
+      params.forEach(function(v, k) { allParams.push(k + '=' + v); });
+      show('All params', allParams.length ? allParams.join(' | ') : '(none)');
+      hr();
+
       var code  = params.get("code") || params.get("auth_code") || "";
-      var error = params.get("error") || params.get("error_message") || "";
+      var error = params.get("error") || params.get("error_message") || params.get("errmsg") || "";
+      var s     = params.get("s") || "";
+
+      show('code param', code   || '(not found)');
+      show('error param', error || '(not found)');
+      show('s param', s         || '(not found)');
+      hr();
 
       if (error) {
-        setStatus("Fyers error: " + error, true);
+        document.getElementById('title').textContent = '⚠️ Fyers Error';
+        show('ERROR', error, 'err');
         return;
       }
 
       if (!code) {
-        setStatus("No auth code found in the redirect URL.", true);
+        document.getElementById('title').textContent = '⚠️ No Code Found';
+        show('STATUS', 'Fyers did not send a code parameter. See params above.', 'err');
         return;
       }
 
-      // Relay the code to GAS via a fetch POST
+      show('Sending code to GAS...', code.slice(0,20) + '...', 'ok');
+
       fetch(GAS_EXEC_URL + "?fyers_cb=1&auth_code=" + encodeURIComponent(code), {
         method: "GET",
-        mode: "no-cors"   // GAS doesn't return CORS headers for GET; no-cors is fine here
+        mode: "no-cors"
       })
       .then(function () {
-        setStatus("Auth code sent to GAS. You can close this tab.");
-        setTimeout(function () { window.close(); }, 1500);
+        document.getElementById('title').textContent = '✅ Done';
+        show('STATUS', 'Auth code sent to GAS. Return to login page and click Step 2.', 'ok');
+        setTimeout(function () { window.close(); }, 3000);
       })
       .catch(function (err) {
-        // no-cors fetch never rejects on network errors; this fires only on real failures
-        setStatus("Relay error: " + err.message, true);
+        show('Relay error', err.message, 'err');
       });
     })();
   </script>
