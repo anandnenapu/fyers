@@ -1,0 +1,90 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Fyers Auth Relay</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #07100b;
+      color: #00e676;
+      font-family: ui-monospace, Consolas, monospace;
+      display: grid;
+      place-items: center;
+      font-size: 15px;
+    }
+    .box {
+      text-align: center;
+      padding: 40px;
+      border: 1px solid #1a3a28;
+      border-radius: 10px;
+      background: #0b1a12;
+    }
+    h2 { margin: 0 0 12px; font-size: 22px; }
+    p  { margin: 6px 0; color: #7fbf99; }
+    .err { color: #ff6677; }
+  </style>
+</head>
+<body>
+  <div class="box" id="box">
+    <h2>🔐 Authenticating...</h2>
+    <p id="status">Reading auth code from Fyers...</p>
+  </div>
+
+  <script>
+    /*
+      HOW THIS WORKS
+      ──────────────
+      1. Fyers redirects here with ?code=AUTH_CODE in the URL.
+      2. This page reads the code from the URL.
+      3. It POSTs the code to your GAS web app endpoint so GAS can
+         pick it up and exchange it for an access token.
+      4. The popup closes automatically.
+
+      SETUP
+      ─────
+      Replace GAS_EXEC_URL below with your actual GAS deployment URL
+      (the one that ends in /exec — NOT the one with ?fyers_cb=1).
+      e.g. "https://script.google.com/macros/s/AKfy.../exec"
+    */
+    var GAS_EXEC_URL = "YOUR_GAS_EXEC_URL_HERE"; // <-- REPLACE THIS
+
+    function setStatus(msg, isErr) {
+      document.getElementById("status").textContent = msg;
+      document.getElementById("status").className = isErr ? "err" : "";
+      document.querySelector("h2").textContent = isErr ? "⚠️ Error" : "✅ Done";
+    }
+
+    (function () {
+      var params = new URLSearchParams(window.location.search);
+      var code  = params.get("code") || params.get("auth_code") || "";
+      var error = params.get("error") || params.get("error_message") || "";
+
+      if (error) {
+        setStatus("Fyers error: " + error, true);
+        return;
+      }
+
+      if (!code) {
+        setStatus("No auth code found in the redirect URL.", true);
+        return;
+      }
+
+      // Relay the code to GAS via a fetch POST
+      fetch(GAS_EXEC_URL + "?fyers_cb=1&auth_code=" + encodeURIComponent(code), {
+        method: "GET",
+        mode: "no-cors"   // GAS doesn't return CORS headers for GET; no-cors is fine here
+      })
+      .then(function () {
+        setStatus("Auth code sent to GAS. You can close this tab.");
+        setTimeout(function () { window.close(); }, 1500);
+      })
+      .catch(function (err) {
+        // no-cors fetch never rejects on network errors; this fires only on real failures
+        setStatus("Relay error: " + err.message, true);
+      });
+    })();
+  </script>
+</body>
+</html>
